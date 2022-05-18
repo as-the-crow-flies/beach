@@ -81,27 +81,6 @@ fn gaSchlickGGX_IBL(cosLi : f32, cosLo : f32, roughness : f32) -> f32
 	return gaSchlickG1(cosLi, k) * gaSchlickG1(cosLo, k);
 }
 
-// Calculate normalized sampling direction vector based on current fragment coordinates (gl_GlobalInvocationID.xyz).
-// This is essentially "inverse-sampling": we reconstruct what the sampling vector would be if we wanted it to "hit"
-// this particular fragment in a cubemap.
-// See: OpenGL core profile specs, section 8.13.
-fn getSamplingVector(id : vec3<u32>) -> vec3<f32>
-{
-    let st = vec2<f32>(id.xy) / vec2<f32>(textureDimensions(result));
-    let uv = 2.0 * vec2<f32>(st.x, 1.0-st.y) - vec2<f32>(1.0);
-
-   switch (id.z)
-   {
-    case 0u { return vec3<f32>(1.0,  uv.y, -uv.x); }
-    case 1u { return vec3<f32>(-1.0, uv.y,  uv.x); }
-    case 2u { return vec3<f32>(uv.x, 1.0, -uv.y); }
-    case 3u { return vec3<f32>(uv.x, -1.0, uv.y); }
-    case 4u { return vec3<f32>(uv.x, uv.y, 1.0); }
-    case 5u { return vec3<f32>(-uv.x, uv.y, -1.0); }
-    default { return vec3<f32>(0.); }
-   };
-}
-
 // Compute orthonormal basis for converting from tanget/shading space to world space.
 fn computeBasisVector(N : vec3<f32>) -> vec3<f32>
 {
@@ -122,7 +101,7 @@ fn tangentToWorld(v : vec3<f32>, N : vec3<f32>, S : vec3<f32>, T : vec3<f32>) ->
 @stage(compute) @workgroup_size(8, 8)
 fn irmap(@builtin(global_invocation_id) id: vec3<u32>)
 {
-	let N = normalize(getSamplingVector(id));
+	let N = normalize(getSamplingVector(id, textureDimensions(result)));
 	let T = computeBasisVector(N);
 	let S = normalize(cross(N, T));
 
@@ -154,7 +133,7 @@ fn spmap(@builtin(global_invocation_id) id: vec3<u32>)
 	let wt = 4.0 * PI / (6. * inputSize.x * inputSize.y);
 
 	// Approximation: Assume zero viewing angle (isotropic reflections).
-    let N = normalize(getSamplingVector(id));
+    let N = normalize(getSamplingVector(id, textureDimensions(result)));
     let T = computeBasisVector(N);
     let S = normalize(cross(N, T));
 

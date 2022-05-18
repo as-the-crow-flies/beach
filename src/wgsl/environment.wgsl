@@ -134,16 +134,15 @@ fn atmos(r: vec3<f32>, r0: vec3<f32>, pSun: vec3<f32>) -> vec3<f32>
        );
 }
 
-@group(0) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(0) var result : texture_storage_2d_array<rgba16float, write>;
 
-@stage(fragment)
-fn fragment(@builtin(position) id: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32>
+@stage(compute) @workgroup_size(8, 8)
+fn compute(@builtin(global_invocation_id) id: vec3<u32>)
 {
     let sun = normalize(stc(1., 1., 0.));
     let earth = vec3<f32>(0., 6371e3, 0.);
 
-    let origin = camera.iV[3].xyz;
-    let ray = createRay(uv, camera.iP, camera.iV);
+    let ray = normalize(getSamplingVector(id, textureDimensions(result)));
 
-    return vec4<f32>(atmos(ray, earth, sun), 1.);
+    textureStore(result, vec2<i32>(id.xy), i32(id.z), vec4<f32>(atmos(ray, earth, sun), 1.));
 }
