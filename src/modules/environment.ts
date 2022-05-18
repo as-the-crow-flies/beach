@@ -32,6 +32,8 @@ export class Environment
   private brdfPipeline: GPUComputePipeline | undefined;
   private brdfBinding: GPUBindGroup | undefined;
 
+  private busy: boolean = false;
+
   constructor(size: number, mips: number) {
     this.size = size;
     this.mips = mips;
@@ -79,6 +81,10 @@ export class Environment
       mieScale: number = 1.2e3,
       mieDirection: number = 0.758)
   {
+    if (this.busy) return;
+
+    this.busy = true;
+
     GPU.device.queue.writeBuffer(this.parameters, 0, new Float32Array([
         ...sunPosition, sunIntensity, ...rayleighCoeff, rayleighScale,
       planetRadius, atmosphereRadius, mieCoeff, mieScale, mieDirection
@@ -201,5 +207,8 @@ export class Environment
     }
 
     GPU.device.queue.submit([cmd.finish()]);
+    await GPU.device.queue.onSubmittedWorkDone()
+
+    this.busy = false;
   }
 }

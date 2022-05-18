@@ -36,17 +36,22 @@ fn createRay(uv: vec2<f32>, PInv : mat4x4<f32>, VInv : mat4x4<f32>) -> vec3<f32>
 // See: OpenGL core profile specs, section 8.13.
 fn getSamplingVector(id : vec3<u32>, dim: vec2<i32>) -> vec3<f32>
 {
-    let st = vec2<f32>(id.xy) / vec2<f32>(dim);
-    let uv = 2.0 * vec2<f32>(st.x, 1.0-st.y) - vec2<f32>(1.0);
+    let step = 1. / vec2<f32>(dim);
+
+    let st = vec2<f32>(id.xy) * step;
+    let uv = 2. * vec2(st.x, 1. - st.y) - 1.;
+
+    let puv = vec2<f32>(uv.x + step.x, uv.y - step.y);
+    let nuv = vec2<f32>(-uv.x - step.x, -uv.y + step.y);
 
    switch (id.z)
    {
-    case 0u { return vec3<f32>(1.0,  uv.y, -uv.x); }
-    case 1u { return vec3<f32>(-1.0, uv.y,  uv.x); }
-    case 2u { return vec3<f32>(uv.x, 1.0, -uv.y); }
-    case 3u { return vec3<f32>(uv.x, -1.0, uv.y); }
-    case 4u { return vec3<f32>(uv.x, uv.y, 1.0); }
-    case 5u { return vec3<f32>(-uv.x, uv.y, -1.0); }
+    case 0u { return vec3<f32>( 1.  , puv.y, nuv.x); }
+    case 1u { return vec3<f32>(-1.  , puv.y, puv.x); }
+    case 2u { return vec3<f32>( puv.x, 1.  , nuv.y); }
+    case 3u { return vec3<f32>( puv.x,-1.  , puv.y); }
+    case 4u { return vec3<f32>( puv.x, puv.y, 1.  ); }
+    case 5u { return vec3<f32>( nuv.x, puv.y,-1.  ); }
     default { return vec3<f32>(0.); }
    };
 }

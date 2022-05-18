@@ -20,7 +20,7 @@ export class GPU
     this.context.configure({
       device: this.device,
       format: this.FORMAT_CANVAS,
-      size: { width: this.canvas.width, height: this.canvas.height },
+      size: { width: this.canvas.width * window.devicePixelRatio, height: this.canvas.height * window.devicePixelRatio },
       usage: GPUTextureUsage.RENDER_ATTACHMENT
     });
 

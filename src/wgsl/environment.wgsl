@@ -129,7 +129,6 @@ fn atmosphere(r : vec3<f32>, r0 : vec3<f32>) -> vec3<f32>
 
         // Increment the primary ray time.
         iTime = iTime + iStepSize;
-
     }
 
     // Calculate and return the final color.
@@ -139,9 +138,10 @@ fn atmosphere(r : vec3<f32>, r0 : vec3<f32>) -> vec3<f32>
 @stage(compute) @workgroup_size(8, 8)
 fn compute(@builtin(global_invocation_id) id: vec3<u32>)
 {
-    let sun = normalize(stc(1., 1., 0.));
     let earth = vec3<f32>(0., 6371e3, 0.);
     let ray = normalize(getSamplingVector(id, textureDimensions(result)));
 
-    textureStore(result, vec2<i32>(id.xy), i32(id.z), vec4<f32>(atmosphere(ray, earth), 1.));
+    let environment = atmosphere(ray, earth);
+
+    textureStore(result, vec2<i32>(id.xy), i32(id.z), vec4<f32>(environment, 1.));
 }

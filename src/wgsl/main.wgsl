@@ -94,17 +94,52 @@ fn shade(eye: vec3<f32>, pos: vec3<f32>, N: vec3<f32>, albedo: vec3<f32>, roughn
     return diffuseIBL + specularIBL;
 }
 
+struct Hit
+{
+    distance : f32,
+    position : vec3<f32>,
+    normal: vec3<f32>,
+    albedo: vec3<f32>,
+    roughness: f32,
+    metallic: f32
+};
+
+fn sphere(index: u32, origin: vec3<f32>, ray: vec3<f32>) -> Hit
+{
+    let s0 = vec3<f32>(0., 0., f32(index) * 3. - 9.);
+    let sr = 1.;
+
+    var hit : Hit;
+
+    hit.distance = rsi(origin, ray, s0, sr);
+    hit.position = origin + hit.distance * ray;
+    hit.normal = normalize(hit.position - s0);
+    hit.roughness = f32(index) / 4.;
+    hit.albedo = vec3<f32>(1.);
+
+    return hit;
+}
+
 fn image(origin: vec3<f32>, ray: vec3<f32>) -> vec3<f32>
 {
     let env = textureSample(environment, SAMPLER, ray).rgb;
 
-    let sphere = rsi(origin, ray, vec3<f32>(0.), 4.);
-    let p = origin + sphere * ray;
-    let n = normalize(p);
+    var hit : Hit;
+    hit.distance = -1.;
 
-    let ibl = shade(origin, p, n, vec3<f32>(1.), .2, 0.);
+    for (var i=0u; i<7u; i++)
+    {
+        let h = sphere(i, origin, ray);
 
-    return select(env, ibl, sphere > 0.);
+        if (h.distance > 0. && (h.distance < hit.distance || hit.distance < 0.))
+        {
+            hit = h;
+        }
+    }
+
+    let ibl = shade(origin, hit.position, hit.normal, hit.albedo, hit.roughness, hit.metallic);
+
+    return select(env, ibl, hit.distance > 0.);
 }
 
 @stage(fragment)

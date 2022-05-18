@@ -12,8 +12,8 @@ import {Environment} from "./modules/environment";
 
   await GPU.init();
 
-  const CUBE_MAP_SIZE = 32;
-  const CUBE_MAP_MIPMAPS = Math.log2(CUBE_MAP_SIZE) - Math.log2(16);
+  const CUBE_MAP_SIZE = 128;
+  const CUBE_MAP_MIPMAPS = Math.log2(CUBE_MAP_SIZE) - Math.log2(2);
 
   let environment = new Environment(CUBE_MAP_SIZE, CUBE_MAP_MIPMAPS);
 
@@ -53,7 +53,7 @@ import {Environment} from "./modules/environment";
   let view = mat4.create();
   let projection = mat4.create();
 
-  let cameraInclination = Math.PI / 2, cameraAzimuth = 0., cameraRadius = 10,
+  let cameraInclination = Math.PI / 2, cameraAzimuth = 0, cameraRadius = 10,
       sunInclination = Math.PI / 3, sunAzimuth = Math.PI;
 
   await environment.render(stc(1, sunInclination, sunAzimuth));
@@ -62,23 +62,29 @@ import {Environment} from "./modules/environment";
   window.addEventListener("mousemove", async e => {
     if (e.buttons == 1)
     {
-      cameraInclination = Math.min(Math.max(cameraInclination + .003 * e.movementY, 0), Math.PI);
-      cameraAzimuth = (cameraAzimuth + .003 * e.movementX) % (2 * Math.PI);
+      cameraInclination = Math.min(Math.max(cameraInclination + .003 * e.movementY, 1E-6), Math.PI);
+      cameraAzimuth = (cameraAzimuth - .003 * e.movementX) % (2 * Math.PI);
     }
     else if (e.buttons == 2)
     {
-      sunInclination = Math.min(Math.max(sunInclination + .003 * e.movementY, 0), Math.PI);
+      sunInclination = Math.min(Math.max(sunInclination + .003 * e.movementY, 0.), Math.PI);
       sunAzimuth = (sunAzimuth - .003 * e.movementX) % (2 * Math.PI);
+
       await environment.render(stc(1, sunInclination, sunAzimuth));
     }
   });
 
-  window.addEventListener("wheel", e => {
-    cameraRadius += .001 * e.deltaY
+  window.addEventListener("mousedown", async _ => {
+    await environment.render(stc(1, sunInclination, sunAzimuth));
   });
 
+  window.addEventListener("wheel", e => {
+    e.preventDefault()
+    cameraRadius += .0005 * cameraRadius * e.deltaY
+  }, { passive: false });
+
   animate(async () => {
-    let WIDTH = window.innerWidth, HEIGHT = window.innerHeight, NEAR = 0.0001, FAR = 10000, FOV = Math.PI/2;
+    let WIDTH = window.innerWidth, HEIGHT = window.innerHeight, NEAR = 0.0001, FAR = 10000, FOV = 2.;
 
     mat4.lookAt(view, stc(cameraRadius, cameraInclination, cameraAzimuth), [0, 0, 0], [0, 1, 0]);
     mat4.perspective(projection, FOV, WIDTH / HEIGHT, NEAR, FAR);
