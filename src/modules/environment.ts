@@ -3,6 +3,7 @@ import COMMON from "../wgsl/common.wgsl";
 import ENVIRONMENT from "../wgsl/environment.wgsl";
 import MIPMAP from "../wgsl/mipmap.wgsl";
 import PBRMAP from "../wgsl/pbrmap.wgsl";
+import {stc} from "../utils";
 
 export class Environment
 {
@@ -10,6 +11,7 @@ export class Environment
   mips: number;
 
   private readonly sampler: GPUSampler;
+  private readonly parameters: GPUBuffer;
 
   readonly environment: GPUTexture;
   private environmentPipeline: GPUComputePipeline | undefined;
@@ -38,6 +40,10 @@ export class Environment
       minFilter: "linear", magFilter: "linear", mipmapFilter: "linear"
     });
 
+    this.parameters = GPU.device.createBuffer({
+      size: 13 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+
     this.environment = GPU.device.createTexture({
       size: [size, size, 6], dimension: "2d", format: GPU.FORMAT_DATA,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
@@ -62,8 +68,22 @@ export class Environment
     });
   }
 
-  async render()
+  async render(
+      sunPosition: [number, number, number] = stc(1., 1., 0),
+      sunIntensity: number = 22.0,
+      rayleighCoeff: [number, number, number] = [5.5e-6, 13.0e-6, 22.4e-6],
+      rayleighScale: number = 8e3,
+      planetRadius: number = 6371e3,
+      atmosphereRadius: number = 6471e3,
+      mieCoeff: number = 21e-6,
+      mieScale: number = 1.2e3,
+      mieDirection: number = 0.758)
   {
+    GPU.device.queue.writeBuffer(this.parameters, 0, new Float32Array([
+        ...sunPosition, sunIntensity, ...rayleighCoeff, rayleighScale,
+      planetRadius, atmosphereRadius, mieCoeff, mieScale, mieDirection
+    ]))
+
     let cmd = GPU.device.createCommandEncoder();
 
     if (!this.brdfPipeline)
@@ -77,6 +97,7 @@ export class Environment
         entries: [{ binding: 2, resource: this.brdf.createView({ dimension: "2d-array" })}]
       });
 
+      // Compute BRDF LUT (One Time)
       let brdfComputePass = cmd.beginComputePass();
       brdfComputePass.setPipeline(this.brdfPipeline);
       brdfComputePass.setBindGroup(0, this.brdfBinding);
@@ -106,13 +127,10 @@ export class Environment
 
     this.environmentBinding ??= GPU.device.createBindGroup({
       layout: this.environmentPipeline.getBindGroupLayout(0),
-      entries: [{
-        binding: 0,
-        resource: this.environment.createView({
-          dimension: "2d-array",
-          mipLevelCount: 1
-        })
-      }]
+      entries: [
+          { binding: 0, resource: this.environment.createView({ dimension: "2d-array", mipLevelCount: 1})},
+          { binding: 1, resource: { buffer: this.parameters }}
+      ]
     });
 
     // Render Environment Cube Map

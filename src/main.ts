@@ -1,7 +1,6 @@
 import QUAD from './wgsl/quad.wgsl';
 import COMMON from './wgsl/common.wgsl';
 import MAIN from './wgsl/main.wgsl';
-import PBRMAP from './wgsl/pbrmap.wgsl';
 
 import {GPU} from "./gpu";
 import {animate, stc} from "./utils";
@@ -13,12 +12,10 @@ import {Environment} from "./modules/environment";
 
   await GPU.init();
 
-  const CUBE_MAP_SIZE = 128;
+  const CUBE_MAP_SIZE = 32;
   const CUBE_MAP_MIPMAPS = Math.log2(CUBE_MAP_SIZE) - Math.log2(16);
 
   let environment = new Environment(CUBE_MAP_SIZE, CUBE_MAP_MIPMAPS);
-
-  await environment.render();
 
   let camera = GPU.device.createBuffer({
     size: 34 *  4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -56,27 +53,34 @@ import {Environment} from "./modules/environment";
   let view = mat4.create();
   let projection = mat4.create();
 
-  let inclination = Math.PI / 2, azimuth = 0., radius = 10;
+  let cameraInclination = Math.PI / 2, cameraAzimuth = 0., cameraRadius = 10,
+      sunInclination = Math.PI / 3, sunAzimuth = Math.PI;
 
-  window.addEventListener("mousemove", e => {
+  await environment.render(stc(1, sunInclination, sunAzimuth));
+
+  GPU.canvas.addEventListener('contextmenu', event => event.preventDefault());
+  window.addEventListener("mousemove", async e => {
     if (e.buttons == 1)
     {
-      inclination = Math.min(Math.max(inclination + .003 * e.movementY, 0), Math.PI);
-      azimuth = (azimuth + .003 * e.movementX) % (2 * Math.PI);
+      cameraInclination = Math.min(Math.max(cameraInclination + .003 * e.movementY, 0), Math.PI);
+      cameraAzimuth = (cameraAzimuth + .003 * e.movementX) % (2 * Math.PI);
+    }
+    else if (e.buttons == 2)
+    {
+      sunInclination = Math.min(Math.max(sunInclination + .003 * e.movementY, 0), Math.PI);
+      sunAzimuth = (sunAzimuth - .003 * e.movementX) % (2 * Math.PI);
+      await environment.render(stc(1, sunInclination, sunAzimuth));
     }
   });
 
   window.addEventListener("wheel", e => {
-    radius += .001 * e.deltaY
+    cameraRadius += .001 * e.deltaY
   });
 
-  animate(() => {
-
-    azimuth += 0.02;
-
+  animate(async () => {
     let WIDTH = window.innerWidth, HEIGHT = window.innerHeight, NEAR = 0.0001, FAR = 10000, FOV = Math.PI/2;
 
-    mat4.lookAt(view, stc(radius, inclination, azimuth), [0, 0, 0], [0, 1, 0]);
+    mat4.lookAt(view, stc(cameraRadius, cameraInclination, cameraAzimuth), [0, 0, 0], [0, 1, 0]);
     mat4.perspective(projection, FOV, WIDTH / HEIGHT, NEAR, FAR);
 
     mat4.invert(view, view);
