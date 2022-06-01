@@ -139,7 +139,7 @@ fn atmosphere(r : vec3<f32>, r0 : vec3<f32>) -> vec3<f32>
 fn compute(@builtin(global_invocation_id) id: vec3<u32>)
 {
     let earth = vec3<f32>(0., 6371e3, 0.);
-    let ray = normalize(getSamplingVector(id, textureDimensions(result)));
+    var ray = normalize(getSamplingVector(id, textureDimensions(result)));
 
     let environment = atmosphere(ray, earth);
 

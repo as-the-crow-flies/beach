@@ -1,6 +1,7 @@
 import {GPU} from "../gpu";
 import TERRAIN from "../wgsl/terrain.wgsl";
 import {Maxmap} from "./maxmap";
+import {Normal} from "./normal";
 
 export class Terrain
 {
@@ -13,6 +14,7 @@ export class Terrain
   private binding: GPUBindGroup | undefined;
 
   private static maxmap: Maxmap = new Maxmap();
+  private static normal: Normal = new Normal();
 
   constructor(size: number, mips: number) {
     this.size = size;
@@ -48,5 +50,6 @@ export class Terrain
     GPU.device.queue.submit([cmd.finish()]);
 
     await Terrain.maxmap.render(this.terrain, this.size, this.mips);
+    await Terrain.normal.render(this.terrain, this.size);
   }
 }

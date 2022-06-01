@@ -16,12 +16,11 @@ import {Terrain} from "./modules/terrain";
   const CUBE_MAP_SIZE = 128;
   const CUBE_MAP_MIPMAPS = Math.log2(CUBE_MAP_SIZE) - Math.log2(2);
 
-  const SIMULATION_SIZE = 1024;
+  const SIMULATION_SIZE = 2048;
   const SIMULATION_MIPMAPS  = Math.log2(SIMULATION_SIZE);
 
   let environment = new Environment(CUBE_MAP_SIZE, CUBE_MAP_MIPMAPS);
   let terrain = new Terrain(SIMULATION_SIZE, SIMULATION_MIPMAPS);
-
 
   let camera = GPU.device.createBuffer({
     size: 34 *  4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST

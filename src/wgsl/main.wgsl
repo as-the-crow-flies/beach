@@ -106,6 +106,13 @@ struct Sphere
     radius : f32
 };
 
+struct Hit
+{
+    position    : vec3<f32>,
+    normal      : vec3<f32>,
+    hit         : bool
+};
+
 struct Material
 {
     distance : f32,
@@ -210,29 +217,58 @@ fn heightmap_aabb(heightmap: texture_2d<f32>, coords: vec2<i32>, level: i32) -> 
     let max = min + s;
 
     return AABB(
-        vec3<f32>(f32(min.x), -10.  , f32(min.y)),
+        vec3<f32>(f32(min.x), -1000.  , f32(min.y)),
         vec3<f32>(f32(max.x), height, f32(max.y))
     );
 }
 
-fn trace_heightmap(ray: Ray, heightmap: texture_2d<f32>) -> vec2<i32>
+fn trace_heightmap(ray: Ray, heightmap: texture_2d<f32>) -> Hit
 {
-    let SIZE = vec2<i32>(textureDimensions(heightmap));
+    var hit : Hit;
+
+    let ISIZE = 1. / vec2<f32>(textureDimensions(heightmap));
     let MIPS = i32(textureNumLevels(heightmap));
 
-    // Ray - Heightmap AABB intersection distances
+    let dx = vec2<i32>(1, 0);
+    let dy = vec2<i32>(0, 1);
+    var dt = 1.;
+
+    // Ray - Heightmap AABB intersection (only sample when needed)
+    // TODO: Recursively Sample mipmap AABBs for big performance gain
     let intersect = trace_aabb(ray, heightmap_aabb(heightmap, vec2<i32>(0), MIPS));
 
-    if (intersect.x >= intersect.y) { return vec2<i32>(-1); }
+    if (intersect.x > intersect.y || intersect.x <= 0.) { return hit; }
 
-    for (var t = intersect.x; t <= intersect.y; t+=1.)
+    var m0 = vec4<f32>(0.);
+    var p0 = vec3<f32>(0.);
+
+    for (var t = intersect.x; t <= intersect.y; t+=dt)
     {
-        let p = ray.origin + ray.direction * t;
-        let c = vec2<i32>(p.xz);
-        if (p.y <= textureLoad(heightmap, c, 0).x) { return c; }
+        let p1 = ray.origin + ray.direction * t;
+        let m1 = textureLoad(heightmap, vec2<i32>(p1.xz), 0);
+
+        if (p1.y < m1.x)
+        {
+             hit.hit = true; // Intersection!
+
+            // Find intersection point between this and previous sample point
+            let x = (m0.x - p0.y) / ((p1.y - p0.y) - (m1.x - m0.x));
+
+            // Linearly Interpolate Position and Normal
+            hit.position = mix(p0, p1, x);
+            hit.normal = mix(m0, m1, x).yzw;
+            return hit;
+        }
+
+        m0 = m1;
+        p0 = p1;
+
+        // Less detail the further from the camera this ray is
+        // TODO: jitter for improved visual quality
+        dt = max(1., .02 * t);
     }
 
-    return vec2<i32>(-1);
+    return hit;
 }
 
 @stage(fragment)
@@ -246,20 +282,11 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32>
 
     var color = image(ray);
 
-    let index = trace_heightmap(ray, terrain);
+    let hit = trace_heightmap(ray, terrain);
 
-    let height = textureLoad(terrain, index, 0).x;
-    let position = vec3<f32>(f32(index.x), height, f32(index.y));
-
-    let normal = normalize(vec3<f32>(
-        textureLoad(terrain, index + vec2<i32>(-1, 0), 0).x - textureLoad(terrain, index + vec2<i32>( 1, 0), 0).x,
-        2.,
-        textureLoad(terrain, index + vec2<i32>( 0,-1), 0).x - textureLoad(terrain, index + vec2<i32>( 0, 1), 0).x
-    ));
-
-    if (index.x >= 0)
+    if (hit.hit)
     {
-        color = shade(ray.origin, position, normal, vec3<f32>(1.), 0., 0.);
+        color = shade(ray.origin, hit.position, hit.normal, vec3<f32>(1.), 0., 0.);
         // return vec4<f32>(.5 + .5 * normal, 1.);
         // return vec4<f32>(f32(index.x) / 512., f32(index.y) / 512., 0., 1.);
     }
