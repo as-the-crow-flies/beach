@@ -4,6 +4,7 @@
 @group(0) @binding(3) var irradiance        : texture_cube<f32>;
 @group(0) @binding(4) var specular          : texture_cube<f32>;
 @group(0) @binding(5) var brdf              : texture_2d<f32>;
+@group(0) @binding(6) var terrain           : texture_2d<f32>;
 
 // Adapted from Physically Based Rendering
 // Copyright (c) 2022-2022  Bram Kraaijeveld
@@ -41,14 +42,6 @@ fn gaSchlickGGX(cosLi : f32, cosLo : f32, roughness : f32) -> f32
 fn fresnelSchlick(F0 : vec3<f32>, cosTheta : f32) -> vec3<f32>
 {
 	return F0 + (vec3<f32>(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
-}
-
-fn rsi(r0 : vec3<f32>, rd : vec3<f32>, s0 : vec3<f32>, sr : f32) -> f32 {
-    let a = dot(rd, rd);
-    let s0_r0 = r0 - s0;
-    let b = 2.0 * dot(rd, s0_r0);
-    let c = dot(s0_r0, s0_r0) - (sr * sr);
-    return select(-1., (-b - sqrt((b*b) - 4.0*a*c))/(2.0*a), b*b - 4.0*a*c >= 0.0);
 }
 
 fn shade(eye: vec3<f32>, pos: vec3<f32>, N: vec3<f32>, albedo: vec3<f32>, roughness: f32, metalness: f32) -> vec3<f32>
@@ -94,7 +87,26 @@ fn shade(eye: vec3<f32>, pos: vec3<f32>, N: vec3<f32>, albedo: vec3<f32>, roughn
     return diffuseIBL + specularIBL;
 }
 
-struct Hit
+struct Ray
+{
+    origin : vec3<f32>,
+    direction : vec3<f32>,
+    inverse : vec3<f32>,
+};
+
+struct AABB
+{
+    min : vec3<f32>,
+    max : vec3<f32>
+};
+
+struct Sphere
+{
+    origin : vec3<f32>,
+    radius : f32
+};
+
+struct Material
 {
     distance : f32,
     position : vec3<f32>,
@@ -104,32 +116,59 @@ struct Hit
     metallic: f32
 };
 
-fn sphere(index: u32, origin: vec3<f32>, ray: vec3<f32>) -> Hit
+fn create_ray(camera: Camera, uv: vec2<f32>) -> Ray
 {
-    let s0 = vec3<f32>(0., 0., f32(index) * 3. - 9.);
-    let sr = 1.;
+    // choose an arbitrary point in the viewing volume
+    // z = -1 equals a point on the near plane, i.e. the screen
+    let pointNDS = vec3<f32>(uv, -1.);
 
-    var hit : Hit;
+    // as this is in homogenous space, add the last homogenous coordinate
+    let pointNDSH = vec4<f32>(pointNDS, 1.0);
+    // transform by inverse projection to get the point in view space
+    var dirEye = camera.iP * pointNDSH;
 
-    hit.distance = rsi(origin, ray, s0, sr);
-    hit.position = origin + hit.distance * ray;
-    hit.normal = normalize(hit.position - s0);
+    // since the camera is at the origin in view space by definition,
+    // the current point is already the correct direction
+    // (dir(0,P) = P - 0 = P as a direction, an infinite point,
+    // the homogenous component becomes 0 the scaling done by the
+    // w-division is not of interest, as the direction in xyz will
+    // stay the same and we can just normalize it later
+    dirEye.w = 0.;
+
+    // compute world ray direction by multiplying the inverse view matrix
+    let dirWorld = (camera.iV * dirEye).xyz;
+
+    // now normalize direction
+    let normDirWorld = normalize(dirWorld);
+
+    return Ray(camera.iV[3].xyz, normDirWorld, 1. / normDirWorld);
+}
+
+fn sphere(index: u32, ray: Ray) -> Material
+{
+    let sphere = Sphere(vec3<f32>(0., 0., f32(index) * 3. - 9.), 1.);
+
+    var hit : Material;
+
+    hit.distance = trace_sphere(ray, sphere);
+    hit.position = ray.origin + hit.distance * ray.direction;
+    hit.normal = normalize(hit.position - sphere.origin);
     hit.roughness = f32(index) / 4.;
     hit.albedo = vec3<f32>(1.);
 
     return hit;
 }
 
-fn image(origin: vec3<f32>, ray: vec3<f32>) -> vec3<f32>
+fn image(ray: Ray) -> vec3<f32>
 {
-    let env = textureSample(environment, SAMPLER, ray).rgb;
+    let env = textureSample(environment, SAMPLER, ray.direction).rgb;
 
-    var hit : Hit;
+    var hit : Material;
     hit.distance = -1.;
 
     for (var i=0u; i<7u; i++)
     {
-        let h = sphere(i, origin, ray);
+        let h = sphere(i, ray);
 
         if (h.distance > 0. && (h.distance < hit.distance || hit.distance < 0.))
         {
@@ -137,18 +176,93 @@ fn image(origin: vec3<f32>, ray: vec3<f32>) -> vec3<f32>
         }
     }
 
-    let ibl = shade(origin, hit.position, hit.normal, hit.albedo, hit.roughness, hit.metallic);
+    let ibl = shade(ray.origin, hit.position, hit.normal, hit.albedo, hit.roughness, hit.metallic);
 
     return select(env, ibl, hit.distance > 0.);
+}
+
+fn trace_aabb(ray: Ray, aabb: AABB) -> vec2<f32>
+{
+    let tMin = (aabb.min - ray.origin) * ray.inverse;
+    let tMax = (aabb.max - ray.origin) * ray.inverse;
+    let t1 = min(tMin, tMax);
+    let t2 = max(tMin, tMax);
+    let tNear = max(max(t1.x, t1.y), t1.z);
+    let tFar = min(min(t2.x, t2.y), t2.z);
+
+    return vec2<f32>(tNear, tFar);
+}
+
+fn trace_sphere(ray: Ray, sphere: Sphere) -> f32 {
+    let a = dot(ray.direction, ray.direction);
+    let s0_r0 = ray.origin - sphere.origin;
+    let b = 2.0 * dot(ray.direction, s0_r0);
+    let c = dot(s0_r0, s0_r0) - (sphere.radius * sphere.radius);
+    return select(-1., (-b - sqrt((b*b) - 4.0*a*c))/(2.0*a), b*b - 4.0*a*c >= 0.0);
+}
+
+fn heightmap_aabb(heightmap: texture_2d<f32>, coords: vec2<i32>, level: i32) -> AABB
+{
+    let height = textureLoad(heightmap, coords, level).x;
+    let s = 1 << u32(level);
+
+    let min = coords * s;
+    let max = min + s;
+
+    return AABB(
+        vec3<f32>(f32(min.x), -10.  , f32(min.y)),
+        vec3<f32>(f32(max.x), height, f32(max.y))
+    );
+}
+
+fn trace_heightmap(ray: Ray, heightmap: texture_2d<f32>) -> vec2<i32>
+{
+    let SIZE = vec2<i32>(textureDimensions(heightmap));
+    let MIPS = i32(textureNumLevels(heightmap));
+
+    // Ray - Heightmap AABB intersection distances
+    let intersect = trace_aabb(ray, heightmap_aabb(heightmap, vec2<i32>(0), MIPS));
+
+    if (intersect.x >= intersect.y) { return vec2<i32>(-1); }
+
+    for (var t = intersect.x; t <= intersect.y; t+=1.)
+    {
+        let p = ray.origin + ray.direction * t;
+        let c = vec2<i32>(p.xz);
+        if (p.y <= textureLoad(heightmap, c, 0).x) { return c; }
+    }
+
+    return vec2<i32>(-1);
 }
 
 @stage(fragment)
 fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32>
 {
-    let origin = camera.iV[3].xyz;
-    let ray = createRay(uv, camera.iP, camera.iV);
+    // return textureSample(terrain, SAMPLER, uv);
 
-    let color = image(origin, ray);
+    var ray = create_ray(camera, uv);
+
+    let tmp = textureSample(terrain, SAMPLER, uv);
+
+    var color = image(ray);
+
+    let index = trace_heightmap(ray, terrain);
+
+    let height = textureLoad(terrain, index, 0).x;
+    let position = vec3<f32>(f32(index.x), height, f32(index.y));
+
+    let normal = normalize(vec3<f32>(
+        textureLoad(terrain, index + vec2<i32>(-1, 0), 0).x - textureLoad(terrain, index + vec2<i32>( 1, 0), 0).x,
+        2.,
+        textureLoad(terrain, index + vec2<i32>( 0,-1), 0).x - textureLoad(terrain, index + vec2<i32>( 0, 1), 0).x
+    ));
+
+    if (index.x >= 0)
+    {
+        color = shade(ray.origin, position, normal, vec3<f32>(1.), 0., 0.);
+        // return vec4<f32>(.5 + .5 * normal, 1.);
+        // return vec4<f32>(f32(index.x) / 512., f32(index.y) / 512., 0., 1.);
+    }
 
     return vec4<f32>(1. - exp(-1. * color), 1.);
 }

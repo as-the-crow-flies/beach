@@ -12,10 +12,10 @@ export const animate = (callback: (t: number, dt: number) => void) => {
   animation(0);
 }
 
-export const stc = (radius: number, inclination: number, azimuth: number) : [number, number, number] => {
+export const stc = (radius: number, inclination: number, azimuth: number, origin = [0, 0, 0]) : [number, number, number] => {
   return [
-      radius * Math.sin(inclination) * Math.cos(azimuth),
-      radius * Math.cos(inclination),
-      radius * Math.sin(inclination) * Math.sin(azimuth)
+      origin[0] + radius * Math.sin(inclination) * Math.cos(azimuth),
+      origin[1] + radius * Math.cos(inclination),
+      origin[2] + radius * Math.sin(inclination) * Math.sin(azimuth)
   ]
 }

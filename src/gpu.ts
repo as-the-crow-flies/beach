@@ -14,13 +14,12 @@ export class GPU
     this.canvas = document.getElementById("canvas") as HTMLCanvasElement;
     this.context = this.canvas.getContext("webgpu") as unknown as GPUCanvasContext;
 
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    this.canvas.width = window.innerWidth * window.devicePixelRatio;
+    this.canvas.height = window.innerHeight * window.devicePixelRatio;
 
     this.context.configure({
       device: this.device,
       format: this.FORMAT_CANVAS,
-      size: { width: this.canvas.width * window.devicePixelRatio, height: this.canvas.height * window.devicePixelRatio },
       usage: GPUTextureUsage.RENDER_ATTACHMENT
     });
 

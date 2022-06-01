@@ -7,6 +7,7 @@ import {animate, stc} from "./utils";
 
 import {mat4} from 'gl-matrix';
 import {Environment} from "./modules/environment";
+import {Terrain} from "./modules/terrain";
 
 (async () => {
 
@@ -15,7 +16,12 @@ import {Environment} from "./modules/environment";
   const CUBE_MAP_SIZE = 128;
   const CUBE_MAP_MIPMAPS = Math.log2(CUBE_MAP_SIZE) - Math.log2(2);
 
+  const SIMULATION_SIZE = 1024;
+  const SIMULATION_MIPMAPS  = Math.log2(SIMULATION_SIZE);
+
   let environment = new Environment(CUBE_MAP_SIZE, CUBE_MAP_MIPMAPS);
+  let terrain = new Terrain(SIMULATION_SIZE, SIMULATION_MIPMAPS);
+
 
   let camera = GPU.device.createBuffer({
     size: 34 *  4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -34,7 +40,7 @@ import {Environment} from "./modules/environment";
     fragment: {
       module: await GPU.compile(COMMON + MAIN),
       entryPoint: "fragment",
-      targets: [{ format: GPU.FORMAT_CANVAS }]
+      targets: [{ format: GPU.FORMAT_CANVAS }],
     }
   });
 
@@ -46,17 +52,23 @@ import {Environment} from "./modules/environment";
       { binding: 2, resource: environment.environment.createView({ dimension: "cube" }) },
       { binding: 3, resource: environment.irradiance.createView({ dimension: "cube" })},
       { binding: 4, resource: environment.specular.createView({ dimension: "cube" })},
-      { binding: 5, resource: environment.brdf.createView() }
+      { binding: 5, resource: environment.brdf.createView() },
+      { binding: 6, resource: terrain.terrain.createView() }
     ]
   });
 
   let view = mat4.create();
   let projection = mat4.create();
 
-  let cameraInclination = Math.PI / 2, cameraAzimuth = 0, cameraRadius = 10,
+  let cameraInclination = 0.711197551196597,
+      cameraAzimuth = -2.354388980384688,
+      cameraRadius = 500,
+      cameraOrigin = [SIMULATION_SIZE / 2, 0, SIMULATION_SIZE / 2] as [number, number, number],
       sunInclination = Math.PI / 3, sunAzimuth = Math.PI;
 
+  // Initialize
   await environment.render(stc(1, sunInclination, sunAzimuth));
+  await terrain.render();
 
   GPU.canvas.addEventListener('contextmenu', event => event.preventDefault());
   window.addEventListener("mousemove", async e => {
@@ -86,7 +98,7 @@ import {Environment} from "./modules/environment";
   animate(async () => {
     let WIDTH = window.innerWidth, HEIGHT = window.innerHeight, NEAR = 0.0001, FAR = 10000, FOV = 2.;
 
-    mat4.lookAt(view, stc(cameraRadius, cameraInclination, cameraAzimuth), [0, 0, 0], [0, 1, 0]);
+    mat4.lookAt(view, stc(cameraRadius, cameraInclination, cameraAzimuth, cameraOrigin), cameraOrigin, [0, 1, 0]);
     mat4.perspective(projection, FOV, WIDTH / HEIGHT, NEAR, FAR);
 
     mat4.invert(view, view);
